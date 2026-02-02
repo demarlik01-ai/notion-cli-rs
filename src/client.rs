@@ -410,7 +410,7 @@ impl NotionClient {
             "children": [{
                 "object": "block",
                 "type": block_type,
-                block_type: {
+                (block_type): {
                     "rich_text": [{
                         "type": "text",
                         "text": { "content": text }
