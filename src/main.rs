@@ -8,7 +8,7 @@ const NOTION_API_BASE: &str = "https://api.notion.com/v1";
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
 fn get_api_version() -> String {
-    env::var("NOTION_API_VERSION").unwrap_or_else(|_| "2022-06-28".to_string())
+    env::var("NOTION_API_VERSION").unwrap_or_else(|_| "2025-09-03".to_string())
 }
 
 #[derive(Parser)]
@@ -58,7 +58,43 @@ enum Commands {
         /// Content to append
         content: String,
     },
+    /// Update a page (title, icon)
+    Update {
+        /// Page ID
+        page_id: String,
+        /// New title
+        #[arg(short, long)]
+        title: Option<String>,
+        /// New icon (emoji)
+        #[arg(short, long)]
+        icon: Option<String>,
+    },
+    /// Delete (archive) a page
+    Delete {
+        /// Page ID
+        page_id: String,
+    },
+    /// Query a database
+    Query {
+        /// Database ID
+        database_id: String,
+        /// Filter by property (format: "PropertyName=value")
+        #[arg(short, long)]
+        filter: Option<String>,
+        /// Sort by property
+        #[arg(short, long)]
+        sort: Option<String>,
+        /// Sort direction (asc or desc)
+        #[arg(long, default_value = "desc")]
+        direction: String,
+        /// Maximum results
+        #[arg(short, long, default_value_t = 100)]
+        limit: usize,
+    },
 }
+
+const MAX_RETRIES: u32 = 3;
+const DEFAULT_RETRY_DELAY_SECS: u64 = 1;
 
 struct NotionClient {
     api_key: String,
@@ -80,6 +116,46 @@ impl NotionClient {
         })
     }
 
+    /// Execute a request with retry logic for rate limiting (429)
+    fn execute_with_retry(&self, request_builder: impl Fn() -> reqwest::blocking::RequestBuilder) -> Result<reqwest::blocking::Response> {
+        let mut retries = 0;
+        
+        loop {
+            let response = request_builder()
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .header("Notion-Version", &self.api_version)
+                .send()
+                .context("Failed to send request")?;
+
+            if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                if retries >= MAX_RETRIES {
+                    bail!("Rate limit exceeded after {} retries", MAX_RETRIES);
+                }
+
+                let retry_after = response
+                    .headers()
+                    .get("Retry-After")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .unwrap_or(DEFAULT_RETRY_DELAY_SECS);
+
+                eprintln!(
+                    "{} Rate limited. Waiting {} seconds before retry ({}/{})...",
+                    "⚠".yellow(),
+                    retry_after,
+                    retries + 1,
+                    MAX_RETRIES
+                );
+
+                std::thread::sleep(Duration::from_secs(retry_after));
+                retries += 1;
+                continue;
+            }
+
+            return response.error_for_status().context("Notion API returned an error");
+        }
+    }
+
     fn search(&self, query: &str, limit: usize) -> Result<Vec<serde_json::Value>> {
         let url = format!("{}/search", NOTION_API_BASE);
         let mut all_results = Vec::new();
@@ -95,17 +171,14 @@ impl NotionClient {
                 body["start_cursor"] = serde_json::json!(cursor);
             }
 
-            let response = self
-                .client
-                .post(&url)
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Notion-Version", &self.api_version)
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send()
-                .context("Failed to send search request")?
-                .error_for_status()
-                .context("Notion API returned an error")?;
+            let body_clone = body.clone();
+            let url_clone = url.clone();
+            let response = self.execute_with_retry(|| {
+                self.client
+                    .post(&url_clone)
+                    .header("Content-Type", "application/json")
+                    .json(&body_clone)
+            })?;
 
             let result: serde_json::Value = response.json().context("Failed to parse response")?;
             
@@ -132,42 +205,25 @@ impl NotionClient {
         let page_id = normalize_page_id(page_id)?;
         let url = format!("{}/pages/{}", NOTION_API_BASE, page_id);
 
-        let response = self
-            .client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Notion-Version", &self.api_version)
-            .send()
-            .context("Failed to get page")?
-            .error_for_status()
-            .context("Failed to fetch page from Notion")?;
-
+        let response = self.execute_with_retry(|| self.client.get(&url))?;
         let result: serde_json::Value = response.json().context("Failed to parse response")?;
         Ok(result)
     }
 
     fn get_blocks(&self, page_id: &str) -> Result<Vec<serde_json::Value>> {
         let page_id = normalize_page_id(page_id)?;
-        let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
+        let base_url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
         let mut all_blocks = Vec::new();
         let mut start_cursor: Option<String> = None;
 
         loop {
-            let mut request_url = url.clone();
-            if let Some(cursor) = &start_cursor {
-                request_url = format!("{}?start_cursor={}", url, cursor);
-            }
+            let request_url = if let Some(cursor) = &start_cursor {
+                format!("{}?start_cursor={}", base_url, cursor)
+            } else {
+                base_url.clone()
+            };
 
-            let response = self
-                .client
-                .get(&request_url)
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Notion-Version", &self.api_version)
-                .send()
-                .context("Failed to get blocks")?
-                .error_for_status()
-                .context("Failed to fetch blocks from Notion")?;
-
+            let response = self.execute_with_retry(|| self.client.get(&request_url))?;
             let result: serde_json::Value = response.json().context("Failed to parse response")?;
             
             if let Some(results) = result.get("results").and_then(|r| r.as_array()) {
@@ -218,17 +274,12 @@ impl NotionClient {
             "children": children
         });
 
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Notion-Version", &self.api_version)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .context("Failed to create page")?
-            .error_for_status()
-            .context("Failed to create page in Notion")?;
+        let response = self.execute_with_retry(|| {
+            self.client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
 
         let result: serde_json::Value = response.json().context("Failed to parse response")?;
         Ok(result)
@@ -251,20 +302,132 @@ impl NotionClient {
             }]
         });
 
-        let response = self
-            .client
-            .patch(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Notion-Version", &self.api_version)
-            .header("Content-Type", "application/json")
-            .json(&body)
-            .send()
-            .context("Failed to append blocks")?
-            .error_for_status()
-            .context("Failed to append blocks to Notion")?;
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
 
         let result: serde_json::Value = response.json().context("Failed to parse response")?;
         Ok(result)
+    }
+
+    fn update_page(&self, page_id: &str, title: Option<&str>, icon: Option<&str>) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let url = format!("{}/pages/{}", NOTION_API_BASE, page_id);
+
+        let mut body = serde_json::json!({});
+
+        if let Some(new_title) = title {
+            body["properties"] = serde_json::json!({
+                "title": {
+                    "title": [{
+                        "text": { "content": new_title }
+                    }]
+                }
+            });
+        }
+
+        if let Some(emoji) = icon {
+            body["icon"] = serde_json::json!({
+                "type": "emoji",
+                "emoji": emoji
+            });
+        }
+
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
+
+        let result: serde_json::Value = response.json().context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    fn delete_page(&self, page_id: &str) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let url = format!("{}/pages/{}", NOTION_API_BASE, page_id);
+
+        let body = serde_json::json!({
+            "archived": true
+        });
+
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
+
+        let result: serde_json::Value = response.json().context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    fn query_database(&self, database_id: &str, filter: Option<&str>, sort: Option<&str>, direction: &str, limit: usize) -> Result<Vec<serde_json::Value>> {
+        let database_id = normalize_page_id(database_id)?;
+        let url = format!("{}/databases/{}/query", NOTION_API_BASE, database_id);
+        let mut all_results = Vec::new();
+        let mut start_cursor: Option<String> = None;
+
+        loop {
+            let mut body = serde_json::json!({
+                "page_size": 100.min(limit - all_results.len())
+            });
+
+            if let Some(cursor) = &start_cursor {
+                body["start_cursor"] = serde_json::json!(cursor);
+            }
+
+            // Parse filter: "PropertyName=value"
+            if let Some(filter_str) = filter {
+                if let Some((prop, value)) = filter_str.split_once('=') {
+                    body["filter"] = serde_json::json!({
+                        "property": prop.trim(),
+                        "rich_text": {
+                            "contains": value.trim()
+                        }
+                    });
+                }
+            }
+
+            // Add sorting
+            if let Some(sort_prop) = sort {
+                body["sorts"] = serde_json::json!([{
+                    "property": sort_prop,
+                    "direction": if direction == "asc" { "ascending" } else { "descending" }
+                }]);
+            }
+
+            let body_clone = body.clone();
+            let url_clone = url.clone();
+            let response = self.execute_with_retry(|| {
+                self.client
+                    .post(&url_clone)
+                    .header("Content-Type", "application/json")
+                    .json(&body_clone)
+            })?;
+
+            let result: serde_json::Value = response.json().context("Failed to parse response")?;
+            
+            if let Some(results) = result.get("results").and_then(|r| r.as_array()) {
+                all_results.extend(results.clone());
+            }
+
+            let has_more = result.get("has_more").and_then(|h| h.as_bool()).unwrap_or(false);
+            if !has_more || all_results.len() >= limit {
+                break;
+            }
+
+            start_cursor = result.get("next_cursor").and_then(|c| c.as_str()).map(String::from);
+            if start_cursor.is_none() {
+                break;
+            }
+        }
+
+        Ok(all_results)
     }
 }
 
@@ -325,6 +488,13 @@ fn main() -> Result<()> {
             handle_create(&client, &parent, &title, content.as_deref())
         }
         Commands::Append { page_id, content } => handle_append(&client, &page_id, &content),
+        Commands::Update { page_id, title, icon } => {
+            handle_update(&client, &page_id, title.as_deref(), icon.as_deref())
+        }
+        Commands::Delete { page_id } => handle_delete(&client, &page_id),
+        Commands::Query { database_id, filter, sort, direction, limit } => {
+            handle_query(&client, &database_id, filter.as_deref(), sort.as_deref(), &direction, limit)
+        }
     };
 
     if let Err(e) = result {
@@ -393,6 +563,130 @@ fn handle_append(client: &NotionClient, page_id: &str, content: &str) -> Result<
     println!("{} Content appended!", "✓".green());
     
     Ok(())
+}
+
+fn handle_update(client: &NotionClient, page_id: &str, title: Option<&str>, icon: Option<&str>) -> Result<()> {
+    if title.is_none() && icon.is_none() {
+        bail!("At least one of --title or --icon must be specified");
+    }
+
+    println!("{} {}", "Updating page:".blue(), page_id);
+    
+    let result = client.update_page(page_id, title, icon)?;
+    
+    let new_title = extract_title(&result);
+    println!("{} Page updated!", "✓".green());
+    println!("  Title: {}", new_title);
+    
+    if let Some(icon_obj) = result.get("icon") {
+        if let Some(emoji) = icon_obj.get("emoji").and_then(|e| e.as_str()) {
+            println!("  Icon: {}", emoji);
+        }
+    }
+    
+    Ok(())
+}
+
+fn handle_delete(client: &NotionClient, page_id: &str) -> Result<()> {
+    println!("{} {}", "Archiving page:".blue(), page_id);
+    
+    let result = client.delete_page(page_id)?;
+    
+    let archived = result.get("archived").and_then(|a| a.as_bool()).unwrap_or(false);
+    if archived {
+        println!("{} Page archived (moved to trash)!", "✓".green());
+    } else {
+        println!("{} Page status unclear", "⚠".yellow());
+    }
+    
+    Ok(())
+}
+
+fn handle_query(client: &NotionClient, database_id: &str, filter: Option<&str>, sort: Option<&str>, direction: &str, limit: usize) -> Result<()> {
+    println!("{} {}", "Querying database:".blue(), database_id);
+    
+    if let Some(f) = filter {
+        println!("  Filter: {}", f);
+    }
+    if let Some(s) = sort {
+        println!("  Sort: {} ({})", s, direction);
+    }
+    
+    let results = client.query_database(database_id, filter, sort, direction, limit)?;
+    println!("{} {} results found\n", "✓".green(), results.len());
+    
+    for item in &results {
+        let id = item.get("id").and_then(|i| i.as_str()).unwrap_or("no-id");
+        let title = extract_title(item);
+        
+        println!("  {} {}", "•".cyan(), title);
+        println!("    ID: {}", id.dimmed());
+        
+        // Show some properties
+        if let Some(props) = item.get("properties").and_then(|p| p.as_object()) {
+            for (key, value) in props.iter().take(3) {
+                if key == "title" || key == "Name" {
+                    continue;
+                }
+                if let Some(prop_value) = extract_property_value(value) {
+                    println!("    {}: {}", key.dimmed(), prop_value);
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+fn extract_property_value(prop: &serde_json::Value) -> Option<String> {
+    // Handle different property types
+    if let Some(rich_text) = prop.get("rich_text").and_then(|r| r.as_array()) {
+        let text: String = rich_text
+            .iter()
+            .filter_map(|rt| rt.get("plain_text").and_then(|t| t.as_str()))
+            .collect();
+        if !text.is_empty() {
+            return Some(text);
+        }
+    }
+    
+    if let Some(select) = prop.get("select") {
+        if let Some(name) = select.get("name").and_then(|n| n.as_str()) {
+            return Some(name.to_string());
+        }
+    }
+    
+    if let Some(multi_select) = prop.get("multi_select").and_then(|m| m.as_array()) {
+        let values: Vec<&str> = multi_select
+            .iter()
+            .filter_map(|s| s.get("name").and_then(|n| n.as_str()))
+            .collect();
+        if !values.is_empty() {
+            return Some(values.join(", "));
+        }
+    }
+    
+    if let Some(number) = prop.get("number") {
+        if let Some(n) = number.as_f64() {
+            return Some(n.to_string());
+        }
+    }
+    
+    if let Some(checkbox) = prop.get("checkbox").and_then(|c| c.as_bool()) {
+        return Some(if checkbox { "✓" } else { "✗" }.to_string());
+    }
+    
+    if let Some(date) = prop.get("date") {
+        if let Some(start) = date.get("start").and_then(|s| s.as_str()) {
+            return Some(start.to_string());
+        }
+    }
+    
+    if let Some(url) = prop.get("url").and_then(|u| u.as_str()) {
+        return Some(url.to_string());
+    }
+    
+    None
 }
 
 fn extract_title(item: &serde_json::Value) -> String {
