@@ -1,0 +1,20 @@
+[package]
+name = "notion-cli-rs"
+version = "0.1.0"
+edition = "2021"
+description = "A simple Notion CLI tool written in Rust"
+authors = ["Claw"]
+repository = "https://github.com/user/notion-cli-rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dotenvy = "0.15"
+anyhow = "1"
+colored = "2"
+
+[[bin]]
+name = "notion"
+path = "src/main.rs"
