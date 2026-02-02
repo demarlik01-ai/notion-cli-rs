@@ -7,6 +7,48 @@ use crate::utils::{
     MAX_RETRIES, DEFAULT_RETRY_DELAY_SECS
 };
 
+#[derive(Debug, Clone, Default)]
+pub struct RichTextSegment {
+    pub text: String,
+    pub link: Option<String>,
+    pub bold: bool,
+    pub italic: bool,
+    pub code: bool,
+}
+
+impl RichTextSegment {
+    pub fn plain(text: &str) -> Self {
+        Self {
+            text: text.to_string(),
+            ..Default::default()
+        }
+    }
+
+    pub fn link(text: &str, url: &str) -> Self {
+        Self {
+            text: text.to_string(),
+            link: Some(url.to_string()),
+            ..Default::default()
+        }
+    }
+
+    pub fn code_inline(text: &str) -> Self {
+        Self {
+            text: text.to_string(),
+            code: true,
+            ..Default::default()
+        }
+    }
+
+    pub fn bold(text: &str) -> Self {
+        Self {
+            text: text.to_string(),
+            bold: true,
+            ..Default::default()
+        }
+    }
+}
+
 pub struct NotionClient {
     api_key: String,
     api_version: String,
@@ -263,6 +305,218 @@ impl NotionClient {
 
         let body = serde_json::json!({
             "archived": true
+        });
+
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
+
+        let result: serde_json::Value = response.json().context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    pub fn append_code_block(&self, page_id: &str, code: &str, language: &str) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
+
+        let body = serde_json::json!({
+            "children": [{
+                "object": "block",
+                "type": "code",
+                "code": {
+                    "rich_text": [{
+                        "type": "text",
+                        "text": { "content": code }
+                    }],
+                    "language": language
+                }
+            }]
+        });
+
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
+
+        let result: serde_json::Value = response.json().context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    pub fn append_bookmark(&self, page_id: &str, url_str: &str, caption: Option<&str>) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
+
+        let bookmark_block = if let Some(cap) = caption {
+            serde_json::json!({
+                "object": "block",
+                "type": "bookmark",
+                "bookmark": {
+                    "url": url_str,
+                    "caption": [{
+                        "type": "text",
+                        "text": { "content": cap }
+                    }]
+                }
+            })
+        } else {
+            serde_json::json!({
+                "object": "block",
+                "type": "bookmark",
+                "bookmark": {
+                    "url": url_str
+                }
+            })
+        };
+
+        let body = serde_json::json!({
+            "children": [bookmark_block]
+        });
+
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
+
+        let result: serde_json::Value = response.json().context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    pub fn delete_block(&self, block_id: &str) -> Result<()> {
+        let block_id = normalize_page_id(block_id)?;
+        let url = format!("{}/blocks/{}", NOTION_API_BASE, block_id);
+
+        self.execute_with_retry(|| self.client.delete(&url))?;
+        Ok(())
+    }
+
+    pub fn append_heading(&self, page_id: &str, text: &str, level: u8) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
+
+        let block_type = match level {
+            1 => "heading_1",
+            2 => "heading_2",
+            _ => "heading_3",
+        };
+
+        let body = serde_json::json!({
+            "children": [{
+                "object": "block",
+                "type": block_type,
+                block_type: {
+                    "rich_text": [{
+                        "type": "text",
+                        "text": { "content": text }
+                    }]
+                }
+            }]
+        });
+
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
+
+        let result: serde_json::Value = response.json().context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    pub fn append_rich_text(&self, page_id: &str, segments: &[RichTextSegment]) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
+
+        let rich_text: Vec<serde_json::Value> = segments.iter().map(|seg| {
+            let mut text_obj = serde_json::json!({
+                "content": seg.text
+            });
+            if let Some(ref link) = seg.link {
+                text_obj["link"] = serde_json::json!({ "url": link });
+            }
+
+            let mut annotations = serde_json::json!({});
+            if seg.bold { annotations["bold"] = serde_json::json!(true); }
+            if seg.italic { annotations["italic"] = serde_json::json!(true); }
+            if seg.code { annotations["code"] = serde_json::json!(true); }
+
+            serde_json::json!({
+                "type": "text",
+                "text": text_obj,
+                "annotations": annotations
+            })
+        }).collect();
+
+        let body = serde_json::json!({
+            "children": [{
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {
+                    "rich_text": rich_text
+                }
+            }]
+        });
+
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
+
+        let result: serde_json::Value = response.json().context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    pub fn append_divider(&self, page_id: &str) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
+
+        let body = serde_json::json!({
+            "children": [{
+                "object": "block",
+                "type": "divider",
+                "divider": {}
+            }]
+        });
+
+        let response = self.execute_with_retry(|| {
+            self.client
+                .patch(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+        })?;
+
+        let result: serde_json::Value = response.json().context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    pub fn append_bulleted_list(&self, page_id: &str, items: &[String]) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
+
+        let children: Vec<serde_json::Value> = items.iter().map(|item| {
+            serde_json::json!({
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [{
+                        "type": "text",
+                        "text": { "content": item }
+                    }]
+                }
+            })
+        }).collect();
+
+        let body = serde_json::json!({
+            "children": children
         });
 
         let response = self.execute_with_retry(|| {

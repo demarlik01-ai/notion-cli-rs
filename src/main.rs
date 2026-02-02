@@ -39,6 +39,12 @@ fn main() -> Result<()> {
             handle_create(&client, &parent, &title, content.as_deref())
         }
         Commands::Append { page_id, content } => handle_append(&client, &page_id, &content),
+        Commands::AppendCode { page_id, code, language } => {
+            handle_append_code(&client, &page_id, &code, &language)
+        }
+        Commands::AppendBookmark { page_id, url, caption } => {
+            handle_append_bookmark(&client, &page_id, &url, caption.as_deref())
+        }
         Commands::Update { page_id, title, icon } => {
             handle_update(&client, &page_id, title.as_deref(), icon.as_deref())
         }
@@ -46,6 +52,16 @@ fn main() -> Result<()> {
         Commands::Query { database_id, filter, sort, direction, limit } => {
             handle_query(&client, &database_id, filter.as_deref(), sort.as_deref(), &direction, limit)
         }
+        Commands::DeleteBlock { block_id } => handle_delete_block(&client, &block_id),
+        Commands::AppendHeading { page_id, text, level } => {
+            handle_append_heading(&client, &page_id, &text, level)
+        }
+        Commands::AppendDivider { page_id } => handle_append_divider(&client, &page_id),
+        Commands::AppendList { page_id, items } => handle_append_list(&client, &page_id, &items),
+        Commands::AppendLink { page_id, prefix, link_text, url, suffix } => {
+            handle_append_link(&client, &page_id, prefix.as_deref(), &link_text, &url, suffix.as_deref())
+        }
+        Commands::GetBlockIds { page_id } => handle_get_block_ids(&client, &page_id),
     };
 
     if let Err(e) = result {

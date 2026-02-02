@@ -48,6 +48,26 @@ pub enum Commands {
         /// Content to append
         content: String,
     },
+    /// Append a code block to a page
+    AppendCode {
+        /// Page ID
+        page_id: String,
+        /// Code content
+        code: String,
+        /// Programming language (e.g., rust, python, javascript)
+        #[arg(short, long, default_value = "plain text")]
+        language: String,
+    },
+    /// Append a bookmark to a page
+    AppendBookmark {
+        /// Page ID
+        page_id: String,
+        /// Bookmark URL
+        url: String,
+        /// Optional caption
+        #[arg(short, long)]
+        caption: Option<String>,
+    },
     /// Update a page (title, icon)
     Update {
         /// Page ID
@@ -81,5 +101,54 @@ pub enum Commands {
         /// Maximum results
         #[arg(short, long, default_value_t = 100)]
         limit: usize,
+    },
+    /// Delete (archive) a block
+    DeleteBlock {
+        /// Block ID
+        block_id: String,
+    },
+    /// Append a heading to a page
+    AppendHeading {
+        /// Page ID
+        page_id: String,
+        /// Heading text
+        text: String,
+        /// Heading level (1, 2, or 3)
+        #[arg(short, long, default_value_t = 2)]
+        level: u8,
+    },
+    /// Append a divider to a page
+    AppendDivider {
+        /// Page ID
+        page_id: String,
+    },
+    /// Append a bulleted list to a page
+    AppendList {
+        /// Page ID
+        page_id: String,
+        /// List items (comma-separated)
+        items: String,
+    },
+    /// Append a paragraph with a link
+    AppendLink {
+        /// Page ID
+        page_id: String,
+        /// Text before the link
+        #[arg(long)]
+        prefix: Option<String>,
+        /// Link text
+        #[arg(long)]
+        link_text: String,
+        /// Link URL
+        #[arg(long)]
+        url: String,
+        /// Text after the link
+        #[arg(long)]
+        suffix: Option<String>,
+    },
+    /// Get block IDs for a page (for bulk operations)
+    GetBlockIds {
+        /// Page ID
+        page_id: String,
     },
 }

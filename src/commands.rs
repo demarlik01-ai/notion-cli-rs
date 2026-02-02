@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use colored::Colorize;
 
-use crate::client::NotionClient;
+use crate::client::{NotionClient, RichTextSegment};
 use crate::render::{extract_title, extract_property_value, print_block};
 
 pub fn handle_search(client: &NotionClient, query: &str, limit: usize) -> Result<()> {
@@ -60,6 +60,28 @@ pub fn handle_append(client: &NotionClient, page_id: &str, content: &str) -> Res
     
     client.append_blocks(page_id, content)?;
     println!("{} Content appended!", "✓".green());
+    
+    Ok(())
+}
+
+pub fn handle_append_code(client: &NotionClient, page_id: &str, code: &str, language: &str) -> Result<()> {
+    println!("{} {} (language: {})", "Appending code block to:".blue(), page_id, language);
+    
+    client.append_code_block(page_id, code, language)?;
+    println!("{} Code block appended!", "✓".green());
+    
+    Ok(())
+}
+
+pub fn handle_append_bookmark(client: &NotionClient, page_id: &str, url: &str, caption: Option<&str>) -> Result<()> {
+    println!("{} {}", "Appending bookmark to:".blue(), page_id);
+    println!("  URL: {}", url);
+    if let Some(cap) = caption {
+        println!("  Caption: {}", cap);
+    }
+    
+    client.append_bookmark(page_id, url, caption)?;
+    println!("{} Bookmark appended!", "✓".green());
     
     Ok(())
 }
@@ -131,6 +153,76 @@ pub fn handle_query(client: &NotionClient, database_id: &str, filter: Option<&st
                 }
             }
         }
+    }
+    
+    Ok(())
+}
+
+pub fn handle_delete_block(client: &NotionClient, block_id: &str) -> Result<()> {
+    println!("{} {}", "Deleting block:".blue(), block_id);
+    
+    client.delete_block(block_id)?;
+    println!("{} Block deleted!", "✓".green());
+    
+    Ok(())
+}
+
+pub fn handle_append_heading(client: &NotionClient, page_id: &str, text: &str, level: u8) -> Result<()> {
+    println!("{} {} (level {})", "Appending heading to:".blue(), page_id, level);
+    
+    client.append_heading(page_id, text, level)?;
+    println!("{} Heading appended!", "✓".green());
+    
+    Ok(())
+}
+
+pub fn handle_append_divider(client: &NotionClient, page_id: &str) -> Result<()> {
+    println!("{} {}", "Appending divider to:".blue(), page_id);
+    
+    client.append_divider(page_id)?;
+    println!("{} Divider appended!", "✓".green());
+    
+    Ok(())
+}
+
+pub fn handle_append_list(client: &NotionClient, page_id: &str, items: &str) -> Result<()> {
+    println!("{} {}", "Appending list to:".blue(), page_id);
+    
+    let items: Vec<String> = items.split(',').map(|s| s.trim().to_string()).collect();
+    client.append_bulleted_list(page_id, &items)?;
+    println!("{} List appended ({} items)!", "✓".green(), items.len());
+    
+    Ok(())
+}
+
+pub fn handle_append_link(client: &NotionClient, page_id: &str, prefix: Option<&str>, link_text: &str, url: &str, suffix: Option<&str>) -> Result<()> {
+    println!("{} {}", "Appending link to:".blue(), page_id);
+    
+    let mut segments = Vec::new();
+    if let Some(p) = prefix {
+        segments.push(RichTextSegment::plain(p));
+    }
+    segments.push(RichTextSegment::link(link_text, url));
+    if let Some(s) = suffix {
+        segments.push(RichTextSegment::plain(s));
+    }
+    
+    client.append_rich_text(page_id, &segments)?;
+    println!("{} Link appended!", "✓".green());
+    
+    Ok(())
+}
+
+pub fn handle_get_block_ids(client: &NotionClient, page_id: &str) -> Result<()> {
+    println!("{} {}", "Getting block IDs for:".blue(), page_id);
+    
+    let blocks = client.get_blocks(page_id)?;
+    println!("{} {} blocks found\n", "✓".green(), blocks.len());
+    
+    for block in &blocks {
+        let id = block.get("id").and_then(|i| i.as_str()).unwrap_or("no-id");
+        let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
+        println!("{}  [{}]", id, block_type);
     }
     
     Ok(())
