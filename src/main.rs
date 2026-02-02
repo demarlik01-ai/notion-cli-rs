@@ -78,7 +78,8 @@ enum Commands {
     Query {
         /// Database ID
         database_id: String,
-        /// Filter by property (format: "PropertyName=value")
+        /// Filter by property (format: "PropertyName=value" or "PropertyName:type=value")
+        /// Supported types: title, rich_text (default), select, checkbox, number
         #[arg(short, long)]
         filter: Option<String>,
         /// Sort by property
@@ -367,29 +368,65 @@ impl NotionClient {
     }
 
     fn query_database(&self, database_id: &str, filter: Option<&str>, sort: Option<&str>, direction: &str, limit: usize) -> Result<Vec<serde_json::Value>> {
+        // Early return for zero limit
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+
         let database_id = normalize_page_id(database_id)?;
         let url = format!("{}/databases/{}/query", NOTION_API_BASE, database_id);
         let mut all_results = Vec::new();
         let mut start_cursor: Option<String> = None;
 
         loop {
+            // Clamp page_size between 1 and 100 (Notion API requirement)
+            let remaining = limit.saturating_sub(all_results.len());
+            let page_size = remaining.clamp(1, 100);
+
             let mut body = serde_json::json!({
-                "page_size": 100.min(limit - all_results.len())
+                "page_size": page_size
             });
 
             if let Some(cursor) = &start_cursor {
                 body["start_cursor"] = serde_json::json!(cursor);
             }
 
-            // Parse filter: "PropertyName=value"
+            // Parse filter: "PropertyName:type=value" or "PropertyName=value" (defaults to rich_text)
+            // Supported types: title, rich_text, select, checkbox, number
             if let Some(filter_str) = filter {
-                if let Some((prop, value)) = filter_str.split_once('=') {
-                    body["filter"] = serde_json::json!({
-                        "property": prop.trim(),
-                        "rich_text": {
-                            "contains": value.trim()
-                        }
-                    });
+                if let Some((prop_part, value)) = filter_str.split_once('=') {
+                    let (prop, filter_type) = if let Some((p, t)) = prop_part.split_once(':') {
+                        (p.trim(), t.trim())
+                    } else {
+                        (prop_part.trim(), "rich_text")
+                    };
+
+                    let filter_value = match filter_type {
+                        "title" => serde_json::json!({
+                            "property": prop,
+                            "title": { "contains": value.trim() }
+                        }),
+                        "select" => serde_json::json!({
+                            "property": prop,
+                            "select": { "equals": value.trim() }
+                        }),
+                        "checkbox" => serde_json::json!({
+                            "property": prop,
+                            "checkbox": { "equals": value.trim().to_lowercase() == "true" }
+                        }),
+                        "number" => {
+                            let num: f64 = value.trim().parse().unwrap_or(0.0);
+                            serde_json::json!({
+                                "property": prop,
+                                "number": { "equals": num }
+                            })
+                        },
+                        _ => serde_json::json!({
+                            "property": prop,
+                            "rich_text": { "contains": value.trim() }
+                        }),
+                    };
+                    body["filter"] = filter_value;
                 }
             }
 
