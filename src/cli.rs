@@ -151,4 +151,15 @@ pub enum Commands {
         /// Page ID
         page_id: String,
     },
+    /// Move a page to a new parent
+    Move {
+        /// Source page ID
+        page_id: String,
+        /// New parent page ID
+        #[arg(short, long)]
+        parent: String,
+        /// Delete original page after copying
+        #[arg(long, default_value_t = false)]
+        delete: bool,
+    },
 }

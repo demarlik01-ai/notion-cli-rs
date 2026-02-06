@@ -62,6 +62,9 @@ fn main() -> Result<()> {
             handle_append_link(&client, &page_id, prefix.as_deref(), &link_text, &url, suffix.as_deref())
         }
         Commands::GetBlockIds { page_id } => handle_get_block_ids(&client, &page_id),
+        Commands::Move { page_id, parent, delete } => {
+            handle_move(&client, &page_id, &parent, delete)
+        }
     };
 
     if let Err(e) = result {

@@ -624,4 +624,142 @@ impl NotionClient {
 
         Ok(all_results)
     }
+
+    /// Move a page to a new parent by copying content and deleting original
+    pub fn move_page(&self, page_id: &str, new_parent_id: &str, delete_original: bool) -> Result<serde_json::Value> {
+        let page_id = normalize_page_id(page_id)?;
+        let new_parent_id = normalize_page_id(new_parent_id)?;
+
+        // 1. Get original page info (title)
+        // Note: For database pages, title property name can vary (e.g., "Name", "Title")
+        // So we find the property with type="title" instead of assuming name="title"
+        eprintln!("{} Reading original page...", "→".blue());
+        let page = self.get_page(&page_id)?;
+        let title = page
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .and_then(|props| {
+                // Find property where type == "title"
+                props.values().find(|v| v.get("type").and_then(|t| t.as_str()) == Some("title"))
+            })
+            .and_then(|t| t.get("title"))
+            .and_then(|t| t.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|t| t.get("plain_text"))
+            .and_then(|t| t.as_str())
+            .unwrap_or("Untitled");
+
+        // 2. Get all blocks from original page
+        eprintln!("{} Fetching blocks...", "→".blue());
+        let blocks = self.get_blocks(&page_id)?;
+
+        // 3. Create new page under new parent
+        eprintln!("{} Creating new page under new parent...", "→".blue());
+        let new_page = self.create_page(&new_parent_id, title, None)?;
+        let new_page_id = new_page
+            .get("id")
+            .and_then(|id| id.as_str())
+            .context("Failed to get new page ID")?;
+
+        // 4. Copy blocks to new page
+        if !blocks.is_empty() {
+            eprintln!("{} Copying {} blocks...", "→".blue(), blocks.len());
+            self.copy_blocks_to_page(new_page_id, &blocks)?;
+        }
+
+        // 5. Optionally delete original page
+        if delete_original {
+            eprintln!("{} Archiving original page...", "→".blue());
+            self.delete_page(&page_id)?;
+        }
+
+        Ok(new_page)
+    }
+
+    /// Copy blocks to a page (handles nested blocks recursively)
+    fn copy_blocks_to_page(&self, page_id: &str, blocks: &[serde_json::Value]) -> Result<()> {
+        let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
+
+        // Process blocks in batches of 100 (Notion API limit)
+        for chunk in blocks.chunks(100) {
+            let converted: Vec<(serde_json::Value, Option<String>)> = chunk
+                .iter()
+                .filter_map(|block| {
+                    let converted = self.convert_block_for_copy(block)?;
+                    // Track original block ID if it has children
+                    let original_id = if block.get("has_children") == Some(&serde_json::json!(true)) {
+                        block.get("id").and_then(|id| id.as_str()).map(String::from)
+                    } else {
+                        None
+                    };
+                    Some((converted, original_id))
+                })
+                .collect();
+
+            if converted.is_empty() {
+                continue;
+            }
+
+            let children: Vec<serde_json::Value> = converted.iter().map(|(b, _)| b.clone()).collect();
+            let body = serde_json::json!({ "children": children });
+
+            let response = self.execute_with_retry(|| {
+                self.client
+                    .patch(&url)
+                    .header("Content-Type", "application/json")
+                    .json(&body)
+            })?;
+            
+            // Get created block IDs to copy children recursively
+            let created: serde_json::Value = response.json().context("Failed to parse response")?;
+            if let Some(results) = created.get("results").and_then(|r| r.as_array()) {
+                for (i, (_, original_id)) in converted.iter().enumerate() {
+                    if let Some(orig_id) = original_id {
+                        if let Some(new_block) = results.get(i) {
+                            if let Some(new_id) = new_block.get("id").and_then(|id| id.as_str()) {
+                                // Recursively copy children
+                                let child_blocks = self.get_blocks(orig_id)?;
+                                if !child_blocks.is_empty() {
+                                    self.copy_blocks_to_page(new_id, &child_blocks)?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Convert a block for copying (remove IDs, timestamps, etc.)
+    fn convert_block_for_copy(&self, block: &serde_json::Value) -> Option<serde_json::Value> {
+        let block_type = block.get("type")?.as_str()?;
+        let content = block.get(block_type)?;
+
+        // Build new block with just type and content
+        let mut new_block = serde_json::json!({
+            "object": "block",
+            "type": block_type,
+        });
+
+        // Copy the type-specific content
+        new_block[block_type] = content.clone();
+
+        // Remove fields that shouldn't be copied
+        if let Some(obj) = new_block.get_mut(block_type) {
+            if let Some(map) = obj.as_object_mut() {
+                map.remove("id");
+                map.remove("created_time");
+                map.remove("last_edited_time");
+                map.remove("created_by");
+                map.remove("last_edited_by");
+                map.remove("has_children");
+                map.remove("archived");
+                map.remove("in_trash");
+            }
+        }
+
+        Some(new_block)
+    }
 }

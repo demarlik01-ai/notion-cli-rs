@@ -227,3 +227,25 @@ pub fn handle_get_block_ids(client: &NotionClient, page_id: &str) -> Result<()> 
     
     Ok(())
 }
+
+pub fn handle_move(client: &NotionClient, page_id: &str, new_parent: &str, delete_original: bool) -> Result<()> {
+    println!("{} {} → {}", "Moving page:".blue(), page_id, new_parent);
+    
+    let result = client.move_page(page_id, new_parent, delete_original)?;
+    
+    let new_id = result.get("id").and_then(|i| i.as_str()).unwrap_or("unknown");
+    let url = result.get("url").and_then(|u| u.as_str());
+    
+    println!("{} Page moved successfully!", "✓".green());
+    println!("  New ID: {}", new_id);
+    if let Some(u) = url {
+        println!("  URL: {}", u);
+    }
+    if delete_original {
+        println!("  {} Original page archived", "→".blue());
+    } else {
+        println!("  {} Original page kept (use --delete to remove)", "ℹ".yellow());
+    }
+    
+    Ok(())
+}
