@@ -1,178 +1,220 @@
-# notion-cli-rs
+# notion-cli
 
-Rust로 작성된 Notion CLI 도구. 터미널에서 Notion 페이지와 데이터베이스를 관리합니다.
+[![Build Status](https://github.com/hyoseok/notion-cli-rs/workflows/CI/badge.svg)](https://github.com/hyoseok/notion-cli-rs/actions)
+[![Crates.io](https://img.shields.io/crates/v/notion-cli.svg)](https://crates.io/crates/notion-cli)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 기능
-
-| 명령어 | 설명 |
-|--------|------|
-| `search` | 페이지/데이터베이스 검색 |
-| `read` | 페이지 내용 읽기 |
-| `create` | 새 페이지 생성 |
-| `append` | 페이지에 내용 추가 |
-| `update` | 페이지 제목/아이콘 수정 |
-| `delete` | 페이지 삭제 (휴지통으로 이동) |
-| `query` | 데이터베이스 쿼리 |
-
-## 설치
-
-### 사전 요구사항
-- Rust 1.70+
-- Notion Integration Token ([발급하기](https://notion.so/my-integrations))
-
-### 빌드
+A fast and simple Notion CLI written in Rust. Manage your Notion pages and databases from the terminal.
 
 ```bash
-# 개발 빌드
-cargo build
+$ notion search "meeting notes"
+✓ 3 results found
 
-# 릴리스 빌드 (권장)
-cargo build --release
+  • [page] Weekly Team Meeting
+    ID: abc123...
+
+  • [page] 1:1 Meeting Notes  
+    ID: def456...
 ```
 
-### 전역 설치
+## Features
+
+- 🔍 **Search** - Find pages and databases instantly
+- 📖 **Read** - View page content with syntax highlighting
+- ✏️ **Create** - Create new pages with content
+- 📝 **Append** - Add text, code blocks, headings, lists, bookmarks
+- 🔄 **Update** - Modify titles and icons
+- 🗃️ **Query** - Filter and sort database entries
+- 📦 **Move** - Relocate pages to different parents
+- ⚡ **Fast** - Written in Rust, minimal overhead
+- 🔄 **Auto-retry** - Handles rate limits automatically
+
+## Installation
+
+### From crates.io (Recommended)
 
 ```bash
+cargo install notion-cli
+```
+
+### From source
+
+```bash
+git clone https://github.com/hyoseok/notion-cli-rs.git
+cd notion-cli-rs
 cargo install --path .
 ```
 
-## 설정
+### Requirements
+
+- Rust 1.70+ (for building from source)
+- [Notion Integration Token](https://www.notion.so/my-integrations)
+
+## Quick Start
+
+### 1. Get your API key
+
+1. Go to [Notion Integrations](https://www.notion.so/my-integrations)
+2. Click "New integration"
+3. Copy the "Internal Integration Token"
+4. **Important**: Share your pages with the integration!
+
+### 2. Configure
 
 ```bash
-cp .env.example .env
+# Interactive setup (recommended)
+notion init
+
+# Or set environment variable
+export NOTION_API_KEY=secret_xxxxx
+
+# Or create config file manually
+echo 'api_key = "secret_xxxxx"' > ~/.config/notion-cli/config.toml
 ```
 
-`.env` 파일 수정:
-```
-NOTION_API_KEY=ntn_xxxxx
-```
-
-## 사용법
-
-### 검색
+### 3. Start using
 
 ```bash
-# 기본 검색
-notion search "검색어"
-
-# 결과 개수 제한
-notion search "검색어" --limit 10
+notion search "my project"
+notion read <page_id>
+notion create --parent <page_id> --title "New Page"
 ```
 
-### 페이지 읽기
+## Configuration
+
+API key is resolved in this order:
+1. `--api-key` command line option
+2. `NOTION_API_KEY` environment variable
+3. `~/.config/notion-cli/config.toml`
+
+```bash
+# View current config
+notion config
+
+# Update config
+notion init --api-key "secret_new_key"
+```
+
+## Usage
+
+### Search
+
+```bash
+notion search "query"
+notion search "project" --limit 10
+```
+
+### Read
 
 ```bash
 notion read <page_id>
 ```
 
-### 페이지 생성
+### Create
 
 ```bash
-# 제목만
-notion create --parent <parent_id> --title "새 페이지"
-
-# 제목 + 내용
-notion create --parent <parent_id> --title "새 페이지" --content "첫 문단"
+notion create --parent <parent_id> --title "Page Title"
+notion create --parent <parent_id> --title "Page Title" --content "First paragraph"
 ```
 
-### 내용 추가
+### Append Content
 
 ```bash
-notion append <page_id> "추가할 내용"
+# Text
+notion append <page_id> "New paragraph"
+
+# Code block
+notion append-code <page_id> "console.log('hello')" --language javascript
+
+# Heading
+notion append-heading <page_id> "Section Title" --level 2
+
+# Bulleted list
+notion append-list <page_id> "Item 1" "Item 2" "Item 3"
+
+# Bookmark
+notion append-bookmark <page_id> --url "https://example.com"
+
+# Divider
+notion append-divider <page_id>
 ```
 
-### 페이지 수정
+### Update
 
 ```bash
-# 제목 변경
-notion update <page_id> --title "새 제목"
-
-# 아이콘 변경
+notion update <page_id> --title "New Title"
 notion update <page_id> --icon "🚀"
-
-# 둘 다
-notion update <page_id> --title "새 제목" --icon "🚀"
+notion update <page_id> --title "New Title" --icon "📝"
 ```
 
-### 페이지 삭제
+### Delete
 
 ```bash
-notion delete <page_id>
+notion delete <page_id>  # Moves to trash
 ```
 
-페이지를 휴지통으로 이동합니다 (아카이브).
-
-### 데이터베이스 쿼리
+### Query Database
 
 ```bash
-# 전체 조회
+# All entries
 notion query <database_id>
 
-# 필터
+# With filter
 notion query <database_id> --filter "Status=Done"
-notion query <database_id> --filter "Name:title=테스트"
-notion query <database_id> --filter "Active:checkbox=true"
+notion query <database_id> --filter "Priority:select=High"
 
-# 정렬
-notion query <database_id> --sort "Created" --direction asc
+# With sort
+notion query <database_id> --sort "Created" --direction desc
 
-# 개수 제한
-notion query <database_id> --limit 10
+# Limit results
+notion query <database_id> --limit 20
 ```
 
-**필터 형식:**
-- `PropertyName=value` (기본: rich_text)
-- `PropertyName:type=value`
+**Filter format:** `PropertyName=value` or `PropertyName:type=value`
 
-**지원 타입:** `title`, `rich_text`, `select`, `checkbox`, `number`
+**Supported types:** `title`, `rich_text`, `select`, `checkbox`, `number`
 
-### 공통 옵션
+### Move Page
 
 ```bash
-# 타임아웃 (기본: 30초)
-notion --timeout 60 search "검색어"
-
-# 버전
-notion --version
-
-# 도움말
-notion --help
-notion <command> --help
+notion move <page_id> --parent <new_parent_id>
+notion move <page_id> --parent <new_parent_id> --delete  # Archive original
 ```
 
-## Notion Integration 설정
+### Other Commands
 
-1. [Notion Integrations](https://notion.so/my-integrations) 접속
-2. "New integration" 클릭
-3. 이름 입력 후 생성
-4. "Internal Integration Token" 복사
-5. **중요**: 접근할 페이지에서 Share → Integration 추가!
-
-## 프로젝트 구조
-
-```
-notion-cli-rs/
-├── Cargo.toml          # 의존성 설정
-├── src/main.rs         # 전체 소스
-├── docs/
-│   ├── ARCHITECTURE.md # 코드 구조
-│   ├── CARGO.md        # Cargo 가이드
-│   └── API_COMPARISON.md # Notion API 분석
-├── .env.example        # 환경변수 예시
-└── .gitignore
+```bash
+notion get-block-ids <page_id>    # List all block IDs
+notion delete-block <block_id>    # Delete a specific block
 ```
 
-## 특징
+### Global Options
 
-- **Rate Limit 자동 처리**: 429 응답 시 자동 재시도 (최대 3회)
-- **페이지네이션 자동 처리**: 대량 데이터 자동 수집
-- **UUID 유연한 입력**: 하이픈 있든 없든 모두 지원
-- **컬러 출력**: 터미널 가독성 향상
+```bash
+notion --api-key <key> <command>  # Override API key
+notion --timeout 60 <command>     # Custom timeout (default: 30s)
+notion --help                     # Show help
+notion --version                  # Show version
+```
 
-## API 버전
+## API Version
 
-Notion API `2025-09-03` 사용 (최신)
+Uses Notion API `2025-09-03` (latest).
 
-## 라이선스
+## Contributing
 
-MIT
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+Made with ❤️ and 🦀
