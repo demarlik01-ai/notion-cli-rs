@@ -9,6 +9,10 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
     
+    /// Notion API key (overrides env var and config file)
+    #[arg(long, global = true, env = "NOTION_API_KEY")]
+    pub api_key: Option<String>,
+    
     /// Request timeout in seconds
     #[arg(long, default_value_t = DEFAULT_TIMEOUT_SECS, global = true)]
     pub timeout: u64,
@@ -162,4 +166,12 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         delete: bool,
     },
+    /// Initialize config with API key
+    Init {
+        /// API key to save (if not provided, will prompt)
+        #[arg(long)]
+        api_key: Option<String>,
+    },
+    /// Show current config
+    Config,
 }

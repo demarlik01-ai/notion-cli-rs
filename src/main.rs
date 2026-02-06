@@ -7,16 +7,29 @@ mod utils;
 use anyhow::Result;
 use clap::Parser;
 use colored::Colorize;
+use std::io::{self, Write};
 
 use cli::{Cli, Commands};
 use client::NotionClient;
 use commands::*;
-use utils::get_api_key;
+use utils::{get_api_key, get_config_path, load_config, save_config, Config};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     
-    let api_key = match get_api_key() {
+    // Handle commands that don't need API key first
+    match &cli.command {
+        Commands::Init { api_key } => {
+            return handle_init(api_key.clone());
+        }
+        Commands::Config => {
+            return handle_config();
+        }
+        _ => {}
+    }
+    
+    // Get API key with priority: CLI arg > env var > config file
+    let api_key = match get_api_key(cli.api_key.as_deref()) {
         Ok(key) => key,
         Err(e) => {
             eprintln!("{} {}", "✗".red(), e);
@@ -33,6 +46,7 @@ fn main() -> Result<()> {
     };
 
     let result = match cli.command {
+        Commands::Init { .. } | Commands::Config => unreachable!(),
         Commands::Search { query, limit } => handle_search(&client, &query, limit),
         Commands::Read { page_id } => handle_read(&client, &page_id),
         Commands::Create { parent, title, content } => {
@@ -72,5 +86,77 @@ fn main() -> Result<()> {
         std::process::exit(1);
     }
 
+    Ok(())
+}
+
+fn handle_init(api_key: Option<String>) -> Result<()> {
+    let key = if let Some(k) = api_key {
+        k
+    } else {
+        // Prompt for API key
+        print!("{} Enter your Notion API key: ", "→".blue());
+        io::stdout().flush()?;
+        
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        input.trim().to_string()
+    };
+    
+    if key.is_empty() {
+        eprintln!("{} API key cannot be empty", "✗".red());
+        std::process::exit(1);
+    }
+    
+    // Validate key format (should start with secret_ or ntn_)
+    if !key.starts_with("secret_") && !key.starts_with("ntn_") {
+        eprintln!("{} Warning: API key should start with 'secret_' or 'ntn_'", "⚠".yellow());
+    }
+    
+    // Save to config
+    let config = Config {
+        api_key: Some(key),
+        timeout: None,
+    };
+    save_config(&config)?;
+    
+    let path = get_config_path().unwrap();
+    println!("{} Config saved to {}", "✓".green(), path.display());
+    println!("  You can now use notion commands without setting NOTION_API_KEY");
+    
+    Ok(())
+}
+
+fn handle_config() -> Result<()> {
+    let config = load_config();
+    let path = get_config_path();
+    
+    println!("{}", "Notion CLI Configuration".blue().bold());
+    println!();
+    
+    if let Some(p) = &path {
+        println!("Config file: {}", p.display());
+    }
+    println!();
+    
+    // API key status
+    print!("API key: ");
+    if let Some(key) = &config.api_key {
+        let masked = if key.len() > 12 {
+            format!("{}...{}", &key[..8], &key[key.len()-4..])
+        } else {
+            "***".to_string()
+        };
+        println!("{} (from config)", masked.green());
+    } else if std::env::var("NOTION_API_KEY").is_ok() {
+        println!("{} (from environment)", "set".green());
+    } else {
+        println!("{}", "not set".red());
+    }
+    
+    // Timeout
+    if let Some(t) = config.timeout {
+        println!("Timeout: {}s", t);
+    }
+    
     Ok(())
 }
