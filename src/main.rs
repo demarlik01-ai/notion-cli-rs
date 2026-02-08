@@ -23,7 +23,7 @@ fn main() -> Result<()> {
             return handle_init(api_key.clone());
         }
         Commands::Config => {
-            return handle_config();
+            return handle_config_with_cli_key(cli.api_key.as_deref());
         }
         _ => {}
     }
@@ -126,7 +126,7 @@ fn handle_init(api_key: Option<String>) -> Result<()> {
     Ok(())
 }
 
-fn handle_config() -> Result<()> {
+fn handle_config_with_cli_key(cli_api_key: Option<&str>) -> Result<()> {
     let config = load_config();
     let path = get_config_path();
     
@@ -138,11 +138,14 @@ fn handle_config() -> Result<()> {
     }
     println!();
     
-    // API key status - show source based on priority order
+    // API key status - show source based on priority order (matching get_api_key)
     print!("API key: ");
     
-    // Check in priority order: env > config > .env
-    if let Ok(key) = std::env::var("NOTION_API_KEY") {
+    // Check in priority order: CLI > env > config > .env
+    if let Some(key) = cli_api_key {
+        let masked = mask_api_key(key);
+        println!("{} (from --api-key)", masked.green());
+    } else if let Ok(key) = std::env::var("NOTION_API_KEY") {
         let masked = mask_api_key(&key);
         println!("{} (from environment)", masked.green());
     } else if let Some(key) = &config.api_key {
@@ -178,8 +181,11 @@ fn handle_config() -> Result<()> {
 }
 
 fn mask_api_key(key: &str) -> String {
-    if key.len() > 12 {
-        format!("{}...{}", &key[..8], &key[key.len()-4..])
+    let chars: Vec<char> = key.chars().collect();
+    if chars.len() > 12 {
+        let prefix: String = chars[..8].iter().collect();
+        let suffix: String = chars[chars.len()-4..].iter().collect();
+        format!("{}...{}", prefix, suffix)
     } else {
         "***".to_string()
     }
