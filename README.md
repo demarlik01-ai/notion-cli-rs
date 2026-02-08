@@ -1,5 +1,6 @@
 # notion-cli
 
+[![Crates.io](https://img.shields.io/crates/v/notion-cli-tool.svg)](https://crates.io/crates/notion-cli-tool)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A fast and simple Notion CLI written in Rust. Manage your Notion pages and databases from the terminal.
