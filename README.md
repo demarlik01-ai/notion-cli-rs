@@ -1,7 +1,5 @@
 # notion-cli
 
-[![Build Status](https://github.com/hyoseok/notion-cli-rs/workflows/CI/badge.svg)](https://github.com/hyoseok/notion-cli-rs/actions)
-[![Crates.io](https://img.shields.io/crates/v/notion-cli.svg)](https://crates.io/crates/notion-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A fast and simple Notion CLI written in Rust. Manage your Notion pages and databases from the terminal.
@@ -40,7 +38,7 @@ cargo install notion-cli
 ### From source
 
 ```bash
-git clone https://github.com/hyoseok/notion-cli-rs.git
+git clone https://github.com/demarlik01/notion-cli-rs.git
 cd notion-cli-rs
 cargo install --path .
 ```
@@ -130,10 +128,10 @@ notion-cli append-code <page_id> "console.log('hello')" --language javascript
 notion-cli append-heading <page_id> "Section Title" --level 2
 
 # Bulleted list
-notion-cli append-list <page_id> "Item 1" "Item 2" "Item 3"
+notion-cli append-list <page_id> "Item 1,Item 2,Item 3"
 
 # Bookmark
-notion-cli append-bookmark <page_id> --url "https://example.com"
+notion-cli append-bookmark <page_id> "https://example.com"
 
 # Divider
 notion-cli append-divider <page_id>

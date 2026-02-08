@@ -1,5 +1,5 @@
-use clap::{Parser, Subcommand};
 use crate::utils::DEFAULT_TIMEOUT_SECS;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "notion-cli")]
@@ -8,11 +8,11 @@ use crate::utils::DEFAULT_TIMEOUT_SECS;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
-    
+
     /// Notion API key (overrides env var and config file)
     #[arg(long, global = true, env = "NOTION_API_KEY")]
     pub api_key: Option<String>,
-    
+
     /// Request timeout in seconds
     #[arg(long, default_value_t = DEFAULT_TIMEOUT_SECS, global = true)]
     pub timeout: u64,

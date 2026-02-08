@@ -12,7 +12,7 @@ pub fn extract_title(item: &serde_json::Value) -> String {
             }
         }
     }
-    
+
     if let Some(title_arr) = item.get("title").and_then(|t| t.as_array()) {
         if let Some(first) = title_arr.first() {
             if let Some(text) = first.get("plain_text").and_then(|t| t.as_str()) {
@@ -20,7 +20,7 @@ pub fn extract_title(item: &serde_json::Value) -> String {
             }
         }
     }
-    
+
     "(Untitled)".to_string()
 }
 
@@ -34,13 +34,13 @@ pub fn extract_property_value(prop: &serde_json::Value) -> Option<String> {
             return Some(text);
         }
     }
-    
+
     if let Some(select) = prop.get("select") {
         if let Some(name) = select.get("name").and_then(|n| n.as_str()) {
             return Some(name.to_string());
         }
     }
-    
+
     if let Some(multi_select) = prop.get("multi_select").and_then(|m| m.as_array()) {
         let values: Vec<&str> = multi_select
             .iter()
@@ -50,33 +50,36 @@ pub fn extract_property_value(prop: &serde_json::Value) -> Option<String> {
             return Some(values.join(", "));
         }
     }
-    
+
     if let Some(number) = prop.get("number") {
         if let Some(n) = number.as_f64() {
             return Some(n.to_string());
         }
     }
-    
+
     if let Some(checkbox) = prop.get("checkbox").and_then(|c| c.as_bool()) {
         return Some(if checkbox { "✓" } else { "✗" }.to_string());
     }
-    
+
     if let Some(date) = prop.get("date") {
         if let Some(start) = date.get("start").and_then(|s| s.as_str()) {
             return Some(start.to_string());
         }
     }
-    
+
     if let Some(url) = prop.get("url").and_then(|u| u.as_str()) {
         return Some(url.to_string());
     }
-    
+
     None
 }
 
 pub fn print_block(block: &serde_json::Value) {
-    let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
-    
+    let block_type = block
+        .get("type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("unknown");
+
     match block_type {
         "paragraph" => {
             if let Some(text) = extract_rich_text(block, "paragraph") {
@@ -126,7 +129,7 @@ pub fn extract_rich_text(block: &serde_json::Value, block_type: &str) -> Option<
         .iter()
         .filter_map(|rt| rt.get("plain_text").and_then(|t| t.as_str()))
         .collect();
-    
+
     if text.is_empty() {
         None
     } else {

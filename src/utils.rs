@@ -32,15 +32,15 @@ pub fn load_config() -> Config {
 /// Save config to file
 pub fn save_config(config: &Config) -> Result<()> {
     let path = get_config_path().context("Could not determine config directory")?;
-    
+
     // Create directory if needed
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("Failed to create config directory")?;
     }
-    
+
     let content = toml::to_string_pretty(config).context("Failed to serialize config")?;
     fs::write(&path, content).context("Failed to write config file")?;
-    
+
     Ok(())
 }
 
@@ -55,30 +55,30 @@ pub fn get_api_key(cli_api_key: Option<&str>) -> Result<String> {
     if let Some(key) = cli_api_key {
         return Ok(key.to_string());
     }
-    
+
     // 2. Environment variable (without loading .env)
     if let Ok(key) = env::var("NOTION_API_KEY") {
         return Ok(key);
     }
-    
+
     // 3. Config file (~/.config/notion-cli/config.toml)
     let config = load_config();
     if let Some(key) = config.api_key {
         return Ok(key);
     }
-    
+
     // 4. .env file (backward compatibility fallback)
     if dotenvy::dotenv().is_ok() {
         if let Ok(key) = env::var("NOTION_API_KEY") {
             return Ok(key);
         }
     }
-    
+
     // None found - show helpful error
     let config_path = get_config_path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "~/.config/notion-cli/config.toml".to_string());
-    
+
     bail!(
         "Notion API key not found.\n\n\
         Set it using one of these methods:\n\
@@ -93,7 +93,7 @@ pub fn get_api_key(cli_api_key: Option<&str>) -> Result<String> {
 /// Normalize page ID: remove dashes, validate format
 pub fn normalize_page_id(id: &str) -> Result<String> {
     let clean: String = id.chars().filter(|c| c.is_ascii_hexdigit()).collect();
-    
+
     if clean.len() != 32 {
         bail!(
             "Invalid page ID '{}': expected 32 hex characters, got {}",
@@ -101,7 +101,7 @@ pub fn normalize_page_id(id: &str) -> Result<String> {
             clean.len()
         );
     }
-    
+
     Ok(format!(
         "{}-{}-{}-{}-{}",
         &clean[0..8],
@@ -140,7 +140,7 @@ mod tests {
             api_key: Some("ntn_test123".to_string()),
             timeout: Some(60),
         };
-        
+
         let serialized = toml::to_string_pretty(&config).unwrap();
         assert!(serialized.contains("api_key = \"ntn_test123\""));
         assert!(serialized.contains("timeout = 60"));

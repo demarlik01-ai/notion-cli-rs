@@ -3,8 +3,7 @@ use colored::Colorize;
 use std::time::Duration;
 
 use crate::utils::{
-    get_api_version, normalize_page_id, NOTION_API_BASE, 
-    MAX_RETRIES, DEFAULT_RETRY_DELAY_SECS
+    get_api_version, normalize_page_id, DEFAULT_RETRY_DELAY_SECS, MAX_RETRIES, NOTION_API_BASE,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -32,6 +31,7 @@ impl RichTextSegment {
         }
     }
 
+    #[allow(dead_code)]
     pub fn code_inline(text: &str) -> Self {
         Self {
             text: text.to_string(),
@@ -40,6 +40,7 @@ impl RichTextSegment {
         }
     }
 
+    #[allow(dead_code)]
     pub fn bold(text: &str) -> Self {
         Self {
             text: text.to_string(),
@@ -61,7 +62,7 @@ impl NotionClient {
             .timeout(Duration::from_secs(timeout_secs))
             .build()
             .context("Failed to create HTTP client")?;
-        
+
         Ok(Self {
             api_key,
             api_version: get_api_version(),
@@ -70,9 +71,12 @@ impl NotionClient {
     }
 
     /// Execute a request with retry logic for rate limiting (429)
-    fn execute_with_retry(&self, request_builder: impl Fn() -> reqwest::blocking::RequestBuilder) -> Result<reqwest::blocking::Response> {
+    fn execute_with_retry(
+        &self,
+        request_builder: impl Fn() -> reqwest::blocking::RequestBuilder,
+    ) -> Result<reqwest::blocking::Response> {
         let mut retries = 0;
-        
+
         loop {
             let response = request_builder()
                 .header("Authorization", format!("Bearer {}", self.api_key))
@@ -105,7 +109,9 @@ impl NotionClient {
                 continue;
             }
 
-            return response.error_for_status().context("Notion API returned an error");
+            return response
+                .error_for_status()
+                .context("Notion API returned an error");
         }
     }
 
@@ -134,17 +140,23 @@ impl NotionClient {
             })?;
 
             let result: serde_json::Value = response.json().context("Failed to parse response")?;
-            
+
             if let Some(results) = result.get("results").and_then(|r| r.as_array()) {
                 all_results.extend(results.clone());
             }
 
-            let has_more = result.get("has_more").and_then(|h| h.as_bool()).unwrap_or(false);
+            let has_more = result
+                .get("has_more")
+                .and_then(|h| h.as_bool())
+                .unwrap_or(false);
             if !has_more || all_results.len() >= limit {
                 break;
             }
 
-            start_cursor = result.get("next_cursor").and_then(|c| c.as_str()).map(String::from);
+            start_cursor = result
+                .get("next_cursor")
+                .and_then(|c| c.as_str())
+                .map(String::from);
             if start_cursor.is_none() {
                 break;
             }
@@ -177,17 +189,23 @@ impl NotionClient {
 
             let response = self.execute_with_retry(|| self.client.get(&request_url))?;
             let result: serde_json::Value = response.json().context("Failed to parse response")?;
-            
+
             if let Some(results) = result.get("results").and_then(|r| r.as_array()) {
                 all_blocks.extend(results.clone());
             }
 
-            let has_more = result.get("has_more").and_then(|h| h.as_bool()).unwrap_or(false);
+            let has_more = result
+                .get("has_more")
+                .and_then(|h| h.as_bool())
+                .unwrap_or(false);
             if !has_more {
                 break;
             }
 
-            start_cursor = result.get("next_cursor").and_then(|c| c.as_str()).map(String::from);
+            start_cursor = result
+                .get("next_cursor")
+                .and_then(|c| c.as_str())
+                .map(String::from);
             if start_cursor.is_none() {
                 break;
             }
@@ -196,10 +214,15 @@ impl NotionClient {
         Ok(all_blocks)
     }
 
-    pub fn create_page(&self, parent_id: &str, title: &str, content: Option<&str>) -> Result<serde_json::Value> {
+    pub fn create_page(
+        &self,
+        parent_id: &str,
+        title: &str,
+        content: Option<&str>,
+    ) -> Result<serde_json::Value> {
         let parent_id = normalize_page_id(parent_id)?;
         let url = format!("{}/pages", NOTION_API_BASE);
-        
+
         let mut children = vec![];
         if let Some(text) = content {
             children.push(serde_json::json!({
@@ -265,7 +288,12 @@ impl NotionClient {
         Ok(result)
     }
 
-    pub fn update_page(&self, page_id: &str, title: Option<&str>, icon: Option<&str>) -> Result<serde_json::Value> {
+    pub fn update_page(
+        &self,
+        page_id: &str,
+        title: Option<&str>,
+        icon: Option<&str>,
+    ) -> Result<serde_json::Value> {
         let page_id = normalize_page_id(page_id)?;
         let url = format!("{}/pages/{}", NOTION_API_BASE, page_id);
 
@@ -318,7 +346,12 @@ impl NotionClient {
         Ok(result)
     }
 
-    pub fn append_code_block(&self, page_id: &str, code: &str, language: &str) -> Result<serde_json::Value> {
+    pub fn append_code_block(
+        &self,
+        page_id: &str,
+        code: &str,
+        language: &str,
+    ) -> Result<serde_json::Value> {
         let page_id = normalize_page_id(page_id)?;
         let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
 
@@ -347,7 +380,12 @@ impl NotionClient {
         Ok(result)
     }
 
-    pub fn append_bookmark(&self, page_id: &str, url_str: &str, caption: Option<&str>) -> Result<serde_json::Value> {
+    pub fn append_bookmark(
+        &self,
+        page_id: &str,
+        url_str: &str,
+        caption: Option<&str>,
+    ) -> Result<serde_json::Value> {
         let page_id = normalize_page_id(page_id)?;
         let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
 
@@ -396,7 +434,12 @@ impl NotionClient {
         Ok(())
     }
 
-    pub fn append_heading(&self, page_id: &str, text: &str, level: u8) -> Result<serde_json::Value> {
+    pub fn append_heading(
+        &self,
+        page_id: &str,
+        text: &str,
+        level: u8,
+    ) -> Result<serde_json::Value> {
         let page_id = normalize_page_id(page_id)?;
         let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
 
@@ -430,29 +473,42 @@ impl NotionClient {
         Ok(result)
     }
 
-    pub fn append_rich_text(&self, page_id: &str, segments: &[RichTextSegment]) -> Result<serde_json::Value> {
+    pub fn append_rich_text(
+        &self,
+        page_id: &str,
+        segments: &[RichTextSegment],
+    ) -> Result<serde_json::Value> {
         let page_id = normalize_page_id(page_id)?;
         let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
 
-        let rich_text: Vec<serde_json::Value> = segments.iter().map(|seg| {
-            let mut text_obj = serde_json::json!({
-                "content": seg.text
-            });
-            if let Some(ref link) = seg.link {
-                text_obj["link"] = serde_json::json!({ "url": link });
-            }
+        let rich_text: Vec<serde_json::Value> = segments
+            .iter()
+            .map(|seg| {
+                let mut text_obj = serde_json::json!({
+                    "content": seg.text
+                });
+                if let Some(ref link) = seg.link {
+                    text_obj["link"] = serde_json::json!({ "url": link });
+                }
 
-            let mut annotations = serde_json::json!({});
-            if seg.bold { annotations["bold"] = serde_json::json!(true); }
-            if seg.italic { annotations["italic"] = serde_json::json!(true); }
-            if seg.code { annotations["code"] = serde_json::json!(true); }
+                let mut annotations = serde_json::json!({});
+                if seg.bold {
+                    annotations["bold"] = serde_json::json!(true);
+                }
+                if seg.italic {
+                    annotations["italic"] = serde_json::json!(true);
+                }
+                if seg.code {
+                    annotations["code"] = serde_json::json!(true);
+                }
 
-            serde_json::json!({
-                "type": "text",
-                "text": text_obj,
-                "annotations": annotations
+                serde_json::json!({
+                    "type": "text",
+                    "text": text_obj,
+                    "annotations": annotations
+                })
             })
-        }).collect();
+            .collect();
 
         let body = serde_json::json!({
             "children": [{
@@ -498,22 +554,29 @@ impl NotionClient {
         Ok(result)
     }
 
-    pub fn append_bulleted_list(&self, page_id: &str, items: &[String]) -> Result<serde_json::Value> {
+    pub fn append_bulleted_list(
+        &self,
+        page_id: &str,
+        items: &[String],
+    ) -> Result<serde_json::Value> {
         let page_id = normalize_page_id(page_id)?;
         let url = format!("{}/blocks/{}/children", NOTION_API_BASE, page_id);
 
-        let children: Vec<serde_json::Value> = items.iter().map(|item| {
-            serde_json::json!({
-                "object": "block",
-                "type": "bulleted_list_item",
-                "bulleted_list_item": {
-                    "rich_text": [{
-                        "type": "text",
-                        "text": { "content": item }
-                    }]
-                }
+        let children: Vec<serde_json::Value> = items
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "object": "block",
+                    "type": "bulleted_list_item",
+                    "bulleted_list_item": {
+                        "rich_text": [{
+                            "type": "text",
+                            "text": { "content": item }
+                        }]
+                    }
+                })
             })
-        }).collect();
+            .collect();
 
         let body = serde_json::json!({
             "children": children
@@ -530,7 +593,14 @@ impl NotionClient {
         Ok(result)
     }
 
-    pub fn query_database(&self, database_id: &str, filter: Option<&str>, sort: Option<&str>, direction: &str, limit: usize) -> Result<Vec<serde_json::Value>> {
+    pub fn query_database(
+        &self,
+        database_id: &str,
+        filter: Option<&str>,
+        sort: Option<&str>,
+        direction: &str,
+        limit: usize,
+    ) -> Result<Vec<serde_json::Value>> {
         if limit == 0 {
             return Ok(Vec::new());
         }
@@ -579,7 +649,7 @@ impl NotionClient {
                                 "property": prop,
                                 "number": { "equals": num }
                             })
-                        },
+                        }
                         _ => serde_json::json!({
                             "property": prop,
                             "rich_text": { "contains": value.trim() }
@@ -606,17 +676,23 @@ impl NotionClient {
             })?;
 
             let result: serde_json::Value = response.json().context("Failed to parse response")?;
-            
+
             if let Some(results) = result.get("results").and_then(|r| r.as_array()) {
                 all_results.extend(results.clone());
             }
 
-            let has_more = result.get("has_more").and_then(|h| h.as_bool()).unwrap_or(false);
+            let has_more = result
+                .get("has_more")
+                .and_then(|h| h.as_bool())
+                .unwrap_or(false);
             if !has_more || all_results.len() >= limit {
                 break;
             }
 
-            start_cursor = result.get("next_cursor").and_then(|c| c.as_str()).map(String::from);
+            start_cursor = result
+                .get("next_cursor")
+                .and_then(|c| c.as_str())
+                .map(String::from);
             if start_cursor.is_none() {
                 break;
             }
@@ -626,7 +702,12 @@ impl NotionClient {
     }
 
     /// Move a page to a new parent by copying content and deleting original
-    pub fn move_page(&self, page_id: &str, new_parent_id: &str, delete_original: bool) -> Result<serde_json::Value> {
+    pub fn move_page(
+        &self,
+        page_id: &str,
+        new_parent_id: &str,
+        delete_original: bool,
+    ) -> Result<serde_json::Value> {
         let page_id = normalize_page_id(page_id)?;
         let new_parent_id = normalize_page_id(new_parent_id)?;
 
@@ -640,7 +721,9 @@ impl NotionClient {
             .and_then(|p| p.as_object())
             .and_then(|props| {
                 // Find property where type == "title"
-                props.values().find(|v| v.get("type").and_then(|t| t.as_str()) == Some("title"))
+                props
+                    .values()
+                    .find(|v| v.get("type").and_then(|t| t.as_str()) == Some("title"))
             })
             .and_then(|t| t.get("title"))
             .and_then(|t| t.as_array())
@@ -687,7 +770,8 @@ impl NotionClient {
                 .filter_map(|block| {
                     let converted = self.convert_block_for_copy(block)?;
                     // Track original block ID if it has children
-                    let original_id = if block.get("has_children") == Some(&serde_json::json!(true)) {
+                    let original_id = if block.get("has_children") == Some(&serde_json::json!(true))
+                    {
                         block.get("id").and_then(|id| id.as_str()).map(String::from)
                     } else {
                         None
@@ -700,7 +784,8 @@ impl NotionClient {
                 continue;
             }
 
-            let children: Vec<serde_json::Value> = converted.iter().map(|(b, _)| b.clone()).collect();
+            let children: Vec<serde_json::Value> =
+                converted.iter().map(|(b, _)| b.clone()).collect();
             let body = serde_json::json!({ "children": children });
 
             let response = self.execute_with_retry(|| {
@@ -709,7 +794,7 @@ impl NotionClient {
                     .header("Content-Type", "application/json")
                     .json(&body)
             })?;
-            
+
             // Get created block IDs to copy children recursively
             let created: serde_json::Value = response.json().context("Failed to parse response")?;
             if let Some(results) = created.get("results").and_then(|r| r.as_array()) {

@@ -2,9 +2,12 @@
 name = "notion-cli-rs"
 version = "0.1.0"
 edition = "2021"
-description = "A simple Notion CLI tool written in Rust"
-authors = ["Claw"]
-repository = "https://github.com/user/notion-cli-rs"
+description = "A fast and simple Notion CLI written in Rust"
+authors = ["demarlik01-ai"]
+repository = "https://github.com/demarlik01/notion-cli-rs"
+license = "MIT"
+keywords = ["notion", "cli", "productivity"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
