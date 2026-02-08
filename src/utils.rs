@@ -48,7 +48,7 @@ pub fn get_api_version() -> String {
     env::var("NOTION_API_VERSION").unwrap_or_else(|_| "2025-09-03".to_string())
 }
 
-/// Get API key with priority: CLI arg > env var > config file
+/// Get API key with priority: CLI arg > env var > config file > .env (backward compat)
 /// Pass cli_api_key as None if not provided via CLI
 pub fn get_api_key(cli_api_key: Option<&str>) -> Result<String> {
     // 1. CLI argument (highest priority)
@@ -56,16 +56,22 @@ pub fn get_api_key(cli_api_key: Option<&str>) -> Result<String> {
         return Ok(key.to_string());
     }
     
-    // 2. Environment variable
-    let _ = dotenvy::dotenv();
+    // 2. Environment variable (without loading .env)
     if let Ok(key) = env::var("NOTION_API_KEY") {
         return Ok(key);
     }
     
-    // 3. Config file
+    // 3. Config file (~/.config/notion-cli/config.toml)
     let config = load_config();
     if let Some(key) = config.api_key {
         return Ok(key);
+    }
+    
+    // 4. .env file (backward compatibility fallback)
+    if dotenvy::dotenv().is_ok() {
+        if let Ok(key) = env::var("NOTION_API_KEY") {
+            return Ok(key);
+        }
     }
     
     // None found - show helpful error
@@ -104,4 +110,68 @@ pub fn normalize_page_id(id: &str) -> Result<String> {
         &clean[16..20],
         &clean[20..32]
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_page_id_with_dashes() {
+        let result = normalize_page_id("2fb74f32-4ab9-80f5-83df-c93c885072e7").unwrap();
+        assert_eq!(result, "2fb74f32-4ab9-80f5-83df-c93c885072e7");
+    }
+
+    #[test]
+    fn test_normalize_page_id_without_dashes() {
+        let result = normalize_page_id("2fb74f324ab980f583dfc93c885072e7").unwrap();
+        assert_eq!(result, "2fb74f32-4ab9-80f5-83df-c93c885072e7");
+    }
+
+    #[test]
+    fn test_normalize_page_id_invalid() {
+        let result = normalize_page_id("invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_serialization() {
+        let config = Config {
+            api_key: Some("ntn_test123".to_string()),
+            timeout: Some(60),
+        };
+        
+        let serialized = toml::to_string_pretty(&config).unwrap();
+        assert!(serialized.contains("api_key = \"ntn_test123\""));
+        assert!(serialized.contains("timeout = 60"));
+    }
+
+    #[test]
+    fn test_config_deserialization() {
+        let toml_str = r#"
+api_key = "ntn_test456"
+timeout = 45
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.api_key, Some("ntn_test456".to_string()));
+        assert_eq!(config.timeout, Some(45));
+    }
+
+    #[test]
+    fn test_config_minimal() {
+        // Only api_key, no timeout
+        let toml_str = r#"api_key = "secret_xyz""#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.api_key, Some("secret_xyz".to_string()));
+        assert_eq!(config.timeout, None);
+    }
+
+    #[test]
+    fn test_get_config_path() {
+        let path = get_config_path();
+        assert!(path.is_some());
+        let path = path.unwrap();
+        assert!(path.to_string_lossy().contains("notion-cli"));
+        assert!(path.to_string_lossy().ends_with("config.toml"));
+    }
 }

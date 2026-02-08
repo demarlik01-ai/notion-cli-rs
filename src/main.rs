@@ -138,25 +138,49 @@ fn handle_config() -> Result<()> {
     }
     println!();
     
-    // API key status
+    // API key status - show source based on priority order
     print!("API key: ");
-    if let Some(key) = &config.api_key {
-        let masked = if key.len() > 12 {
-            format!("{}...{}", &key[..8], &key[key.len()-4..])
-        } else {
-            "***".to_string()
-        };
+    
+    // Check in priority order: env > config > .env
+    if let Ok(key) = std::env::var("NOTION_API_KEY") {
+        let masked = mask_api_key(&key);
+        println!("{} (from environment)", masked.green());
+    } else if let Some(key) = &config.api_key {
+        let masked = mask_api_key(key);
         println!("{} (from config)", masked.green());
-    } else if std::env::var("NOTION_API_KEY").is_ok() {
-        println!("{} (from environment)", "set".green());
     } else {
-        println!("{}", "not set".red());
+        // Check .env as fallback
+        if dotenvy::dotenv().is_ok() {
+            if let Ok(key) = std::env::var("NOTION_API_KEY") {
+                let masked = mask_api_key(&key);
+                println!("{} (from .env)", masked.green());
+            } else {
+                println!("{}", "not set".red());
+            }
+        } else {
+            println!("{}", "not set".red());
+        }
     }
+    
+    println!();
+    println!("{}", "Priority order:".dimmed());
+    println!("  1. --api-key option");
+    println!("  2. NOTION_API_KEY environment variable");
+    println!("  3. ~/.config/notion-cli/config.toml");
+    println!("  4. .env file (backward compatibility)");
     
     // Timeout
     if let Some(t) = config.timeout {
-        println!("Timeout: {}s", t);
+        println!("\nTimeout: {}s", t);
     }
     
     Ok(())
+}
+
+fn mask_api_key(key: &str) -> String {
+    if key.len() > 12 {
+        format!("{}...{}", &key[..8], &key[key.len()-4..])
+    } else {
+        "***".to_string()
+    }
 }
