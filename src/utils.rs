@@ -76,7 +76,7 @@ pub fn get_api_key(cli_api_key: Option<&str>) -> Result<String> {
     bail!(
         "Notion API key not found.\n\n\
         Set it using one of these methods:\n\
-        1. Run: notion init\n\
+        1. Run: notion-cli init\n\
         2. Set env: export NOTION_API_KEY=secret_xxx\n\
         3. Add to {}: api_key = \"secret_xxx\"\n\
         4. Use --api-key option",

@@ -121,7 +121,7 @@ fn handle_init(api_key: Option<String>) -> Result<()> {
     
     let path = get_config_path().unwrap();
     println!("{} Config saved to {}", "✓".green(), path.display());
-    println!("  You can now use notion commands without setting NOTION_API_KEY");
+    println!("  You can now use notion-cli commands without setting NOTION_API_KEY");
     
     Ok(())
 }

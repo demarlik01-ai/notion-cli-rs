@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use crate::utils::DEFAULT_TIMEOUT_SECS;
 
 #[derive(Parser)]
-#[command(name = "notion")]
+#[command(name = "notion-cli")]
 #[command(about = "A simple Notion CLI tool", long_about = None)]
 #[command(version)]
 pub struct Cli {

@@ -7,7 +7,7 @@
 A fast and simple Notion CLI written in Rust. Manage your Notion pages and databases from the terminal.
 
 ```bash
-$ notion search "meeting notes"
+$ notion-cli search "meeting notes"
 ✓ 3 results found
 
   • [page] Weekly Team Meeting
@@ -63,7 +63,7 @@ cargo install --path .
 
 ```bash
 # Interactive setup (recommended)
-notion init
+notion-cli init
 
 # Or set environment variable
 export NOTION_API_KEY=secret_xxxxx
@@ -75,9 +75,9 @@ echo 'api_key = "secret_xxxxx"' > ~/.config/notion-cli/config.toml
 ### 3. Start using
 
 ```bash
-notion search "my project"
-notion read <page_id>
-notion create --parent <page_id> --title "New Page"
+notion-cli search "my project"
+notion-cli read <page_id>
+notion-cli create --parent <page_id> --title "New Page"
 ```
 
 ## Configuration
@@ -89,10 +89,10 @@ API key is resolved in this order:
 
 ```bash
 # View current config
-notion config
+notion-cli config
 
 # Update config
-notion init --api-key "secret_new_key"
+notion-cli init --api-key "secret_new_key"
 ```
 
 ## Usage
@@ -100,74 +100,74 @@ notion init --api-key "secret_new_key"
 ### Search
 
 ```bash
-notion search "query"
-notion search "project" --limit 10
+notion-cli search "query"
+notion-cli search "project" --limit 10
 ```
 
 ### Read
 
 ```bash
-notion read <page_id>
+notion-cli read <page_id>
 ```
 
 ### Create
 
 ```bash
-notion create --parent <parent_id> --title "Page Title"
-notion create --parent <parent_id> --title "Page Title" --content "First paragraph"
+notion-cli create --parent <parent_id> --title "Page Title"
+notion-cli create --parent <parent_id> --title "Page Title" --content "First paragraph"
 ```
 
 ### Append Content
 
 ```bash
 # Text
-notion append <page_id> "New paragraph"
+notion-cli append <page_id> "New paragraph"
 
 # Code block
-notion append-code <page_id> "console.log('hello')" --language javascript
+notion-cli append-code <page_id> "console.log('hello')" --language javascript
 
 # Heading
-notion append-heading <page_id> "Section Title" --level 2
+notion-cli append-heading <page_id> "Section Title" --level 2
 
 # Bulleted list
-notion append-list <page_id> "Item 1" "Item 2" "Item 3"
+notion-cli append-list <page_id> "Item 1" "Item 2" "Item 3"
 
 # Bookmark
-notion append-bookmark <page_id> --url "https://example.com"
+notion-cli append-bookmark <page_id> --url "https://example.com"
 
 # Divider
-notion append-divider <page_id>
+notion-cli append-divider <page_id>
 ```
 
 ### Update
 
 ```bash
-notion update <page_id> --title "New Title"
-notion update <page_id> --icon "🚀"
-notion update <page_id> --title "New Title" --icon "📝"
+notion-cli update <page_id> --title "New Title"
+notion-cli update <page_id> --icon "🚀"
+notion-cli update <page_id> --title "New Title" --icon "📝"
 ```
 
 ### Delete
 
 ```bash
-notion delete <page_id>  # Moves to trash
+notion-cli delete <page_id>  # Moves to trash
 ```
 
 ### Query Database
 
 ```bash
 # All entries
-notion query <database_id>
+notion-cli query <database_id>
 
 # With filter
-notion query <database_id> --filter "Status=Done"
-notion query <database_id> --filter "Priority:select=High"
+notion-cli query <database_id> --filter "Status=Done"
+notion-cli query <database_id> --filter "Priority:select=High"
 
 # With sort
-notion query <database_id> --sort "Created" --direction desc
+notion-cli query <database_id> --sort "Created" --direction desc
 
 # Limit results
-notion query <database_id> --limit 20
+notion-cli query <database_id> --limit 20
 ```
 
 **Filter format:** `PropertyName=value` or `PropertyName:type=value`
@@ -177,24 +177,24 @@ notion query <database_id> --limit 20
 ### Move Page
 
 ```bash
-notion move <page_id> --parent <new_parent_id>
-notion move <page_id> --parent <new_parent_id> --delete  # Archive original
+notion-cli move <page_id> --parent <new_parent_id>
+notion-cli move <page_id> --parent <new_parent_id> --delete  # Archive original
 ```
 
 ### Other Commands
 
 ```bash
-notion get-block-ids <page_id>    # List all block IDs
-notion delete-block <block_id>    # Delete a specific block
+notion-cli get-block-ids <page_id>    # List all block IDs
+notion-cli delete-block <block_id>    # Delete a specific block
 ```
 
 ### Global Options
 
 ```bash
-notion --api-key <key> <command>  # Override API key
-notion --timeout 60 <command>     # Custom timeout (default: 30s)
-notion --help                     # Show help
-notion --version                  # Show version
+notion-cli --api-key <key> <command>  # Override API key
+notion-cli --timeout 60 <command>     # Custom timeout (default: 30s)
+notion-cli --help                     # Show help
+notion-cli --version                  # Show version
 ```
 
 ## API Version

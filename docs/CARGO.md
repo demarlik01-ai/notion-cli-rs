@@ -29,7 +29,7 @@ anyhow = "1"
 colored = "2"
 
 [[bin]]
-name = "notion"
+name = "notion-cli"
 path = "src/main.rs"
 ```
 
