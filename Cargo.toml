@@ -23,3 +23,8 @@ dirs = "6.0.0"
 [[bin]]
 name = "notion-cli"
 path = "src/main.rs"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
