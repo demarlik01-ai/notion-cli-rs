@@ -1,138 +1,169 @@
-# 아키텍처
+# Architecture
 
-## 개요
+## Overview
 
-단일 파일(`src/main.rs`) 구조의 심플한 CLI 애플리케이션.
-Notion REST API를 래핑하여 터미널에서 사용 가능하게 함.
+notion-cli is a Rust CLI application that wraps the Notion REST API for terminal usage. It follows a modular architecture with 6 source files (~1,700 LOC total).
 
-## 구조
+## Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        main()                           │
-│  - CLI 파싱 (clap)                                      │
-│  - API 키 로드                                          │
-│  - NotionClient 초기화                                  │
-│  - 명령어 라우팅                                        │
-└─────────────────────────────────────────────────────────┘
+notion-cli-rs/
+├── src/
+│   ├── main.rs        # Entry point, command routing, init/config handlers
+│   ├── cli.rs         # CLI argument definitions (clap derive)
+│   ├── client.rs      # NotionClient - HTTP client & API methods
+│   ├── commands.rs    # Command handler functions
+│   ├── render.rs      # Terminal output formatting
+│   └── utils.rs       # Config management, helpers, constants
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── ARCHITECTURE-ko.md
+│   └── API_COMPARISON.md
+├── Cargo.toml
+└── README.md
+```
+
+## Module Diagram
+
+```
+                    ┌──────────────┐
+                    │   main.rs    │
+                    │  - CLI parse │
+                    │  - Routing   │
+                    │  - init/cfg  │
+                    └──────┬───────┘
                            │
-           ┌───────────────┼───────────────┐
-           ▼               ▼               ▼
-    ┌────────────┐  ┌────────────┐  ┌────────────┐
-    │   Search   │  │    Read    │  │   Create   │
-    │  handler   │  │  handler   │  │  handler   │
-    └────────────┘  └────────────┘  └────────────┘
-           │               │               │
-           └───────────────┴───────────────┘
-                           │
-                           ▼
-           ┌───────────────────────────────┐
-           │        NotionClient           │
-           │  - search()                   │
-           │  - get_page()                 │
-           │  - get_blocks()               │
-           │  - create_page()              │
-           │  - append_blocks()            │
-           └───────────────────────────────┘
-                           │
-                           ▼
-           ┌───────────────────────────────┐
-           │      Notion REST API          │
-           │   https://api.notion.com/v1   │
-           └───────────────────────────────┘
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+       ┌───────────┐ ┌──────────┐ ┌──────────┐
+       │  cli.rs   │ │commands.rs│ │ utils.rs │
+       │  (clap)   │ │(handlers)│ │ (config) │
+       └───────────┘ └────┬─────┘ └──────────┘
+                          │
+                          ▼
+                   ┌─────────────┐
+                   │ client.rs   │
+                   │(NotionClient)│
+                   └──────┬──────┘
+                          │
+                   ┌──────┴──────┐
+                   ▼             ▼
+            ┌───────────┐ ┌───────────┐
+            │ render.rs │ │ Notion API│
+            │ (output)  │ │  (REST)   │
+            └───────────┘ └───────────┘
 ```
 
-## 핵심 컴포넌트
+## Modules
 
-### 1. CLI (clap derive)
+### `cli.rs` — CLI Definitions
 
-```rust
-struct Cli {
-    command: Commands,
-    timeout: u64,  // 글로벌 옵션
-}
+Defines the CLI structure using clap's derive API.
 
-enum Commands {
-    Search { query, limit },
-    Read { page_id },
-    Create { parent, title, content },
-    Append { page_id, content },
-}
-```
+- `Cli` struct: global options (`--api-key`, `--timeout`)
+- `Commands` enum: 18 subcommands (search, read, create, append, update, delete, query, move, init, config, etc.)
 
-### 2. NotionClient
+### `main.rs` — Entry Point & Routing
 
-HTTP 클라이언트 래퍼. 모든 API 호출을 담당.
+1. Parses CLI arguments
+2. Handles `init` and `config` commands (no API key needed)
+3. Resolves API key via priority chain
+4. Initializes `NotionClient`
+5. Routes to appropriate command handler
 
-- **인증**: Bearer 토큰 (NOTION_API_KEY)
-- **버전**: Notion-Version 헤더 (기본 2022-06-28)
-- **HTTP**: reqwest blocking 클라이언트
+Also contains `handle_init()` and `handle_config_with_cli_key()`.
 
-### 3. 페이지네이션
+### `client.rs` — Notion API Client
 
-`search()`와 `get_blocks()`는 자동 페이지네이션 지원:
+`NotionClient` wraps reqwest's blocking HTTP client.
 
-```rust
-loop {
-    let response = api_call(start_cursor)?;
-    results.extend(response.results);
-    
-    if !response.has_more { break; }
-    start_cursor = response.next_cursor;
-}
-```
+**Key features:**
+- Bearer token authentication
+- Notion-Version header (`2025-09-03`)
+- Automatic pagination for search and block retrieval
+- Auto-retry with exponential backoff on rate limits (HTTP 429)
+- Rich text builder helpers (`plain`, `link`, `code_inline`, `bold`)
 
-### 4. 헬퍼 함수
+**API methods (16):**
+| Method | HTTP | Endpoint |
+|--------|------|----------|
+| `search` | POST | `/search` |
+| `get_page` | GET | `/pages/{id}` |
+| `get_blocks` | GET | `/blocks/{id}/children` |
+| `create_page` | POST | `/pages` |
+| `append_blocks` | PATCH | `/blocks/{id}/children` |
+| `update_page` | PATCH | `/pages/{id}` |
+| `delete_page` | PATCH | `/pages/{id}` (archive) |
+| `append_code_block` | PATCH | `/blocks/{id}/children` |
+| `append_bookmark` | PATCH | `/blocks/{id}/children` |
+| `delete_block` | DELETE | `/blocks/{id}` |
+| `append_heading` | PATCH | `/blocks/{id}/children` |
+| `append_rich_text` | PATCH | `/blocks/{id}/children` |
+| `append_divider` | PATCH | `/blocks/{id}/children` |
+| `append_bulleted_list` | PATCH | `/blocks/{id}/children` |
+| `query_database` | POST | `/databases/{id}/query` |
+| `move_page` | POST+PATCH | `/pages` + `/pages/{id}` |
 
-- `normalize_page_id()`: 다양한 형식의 페이지 ID를 UUID 형식으로 정규화
-- `extract_title()`: 복잡한 Notion 객체에서 제목 추출
-- `extract_rich_text()`: 블록에서 텍스트 추출
-- `print_block()`: 블록 타입별 출력 포맷팅
+### `commands.rs` — Command Handlers
 
-## 데이터 흐름
+Each handler function:
+1. Validates and normalizes input (page IDs, etc.)
+2. Calls `NotionClient` methods
+3. Formats output via `render.rs`
 
-### Search
+16 handler functions corresponding to CLI subcommands.
 
-```
-사용자 입력 → POST /search → 결과 파싱 → 제목/ID 출력
-```
+### `render.rs` — Output Formatting
 
-### Read
+Terminal rendering with `colored` crate:
+- `extract_title()` — extract title from Notion page/database objects
+- `extract_rich_text()` — extract plain text from block rich_text arrays
+- `extract_property_value()` — extract property values for database query results
+- `print_block()` — format and print individual blocks by type
 
-```
-페이지 ID → GET /pages/{id} → 메타데이터
-         → GET /blocks/{id}/children → 블록 목록 → 포맷팅 출력
-```
+**Supported block types:** paragraph, heading (1-3), bulleted/numbered list, code, divider, bookmark, to-do
 
-### Create
+### `utils.rs` — Configuration & Helpers
 
-```
-부모 ID + 제목 + 내용 → POST /pages → 생성된 페이지 ID/URL 출력
-```
+**Config management:**
+- `Config` struct: `api_key`, `timeout` (serialized as TOML)
+- Config path: `~/.config/notion-cli/config.toml`
+- `load_config()` / `save_config()` — TOML read/write
 
-### Append
+**API key resolution priority:**
+1. `--api-key` CLI option
+2. `NOTION_API_KEY` environment variable
+3. `~/.config/notion-cli/config.toml`
+4. `.env` file (backward compatibility)
 
-```
-페이지 ID + 내용 → PATCH /blocks/{id}/children → 완료 메시지
-```
+**Other utilities:**
+- `normalize_page_id()` — converts various ID formats to UUID
+- `get_api_version()` — API version string
 
-## 에러 처리
+## Dependencies
 
-- `anyhow`: 에러 체이닝 및 컨텍스트 추가
-- 모든 API 호출에 `.context()` 적용
-- `main()`에서 통합 에러 핸들링 (exit code 1)
+| Crate | Purpose |
+|-------|---------|
+| `clap` | CLI argument parsing (derive) |
+| `reqwest` | HTTP client (blocking, rustls-tls) |
+| `serde` / `serde_json` | JSON serialization |
+| `toml` | Config file parsing |
+| `dirs` | XDG config directory resolution |
+| `dotenvy` | .env file loading (legacy fallback) |
+| `anyhow` | Error handling with context |
+| `colored` | Terminal color output |
 
-## 출력 포맷
+## Error Handling
 
-- `colored` 크레이트로 터미널 색상 지원
-- 성공: ✓ (녹색)
-- 실패: ✗ (빨강)
-- 정보: 파랑/시안
-- 메타데이터: dimmed
+- All functions return `anyhow::Result<T>`
+- `.context()` on every API call for clear error messages
+- Rate limit (HTTP 429): automatic retry with backoff (max 3 retries)
+- `main()` catches all errors → prints with red `✗` → exits code 1
 
-## 제한사항
+## Design Decisions
 
-- Blocking HTTP (async 미사용) - CLI 특성상 충분
-- 단일 파일 구조 - 규모가 작아서 충분
-- Rich text 편집 미지원 - plain text만 생성/추가 가능
-- 데이터베이스 아이템 생성 미지원 - 페이지만 가능
+- **Blocking HTTP**: Async is unnecessary for a sequential CLI tool
+- **Modular files**: Split from single file at ~800 LOC for maintainability
+- **Global config**: XDG-compliant `~/.config/` over `.env` for portability
+- **Auto-pagination**: Users never deal with cursors manually
+- **No database item creation**: Pages only — keeps the API surface simple
