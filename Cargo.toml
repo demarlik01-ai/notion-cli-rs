@@ -18,5 +18,5 @@ toml = "0.9.11"
 dirs = "6.0.0"
 
 [[bin]]
-name = "notion"
+name = "notion-cli"
 path = "src/main.rs"
