@@ -32,13 +32,13 @@ $ notion-cli search "meeting notes"
 ### From crates.io (Recommended)
 
 ```bash
-cargo install notion-cli
+cargo install notion-cli-tool
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/demarlik01/notion-cli-rs.git
+git clone https://github.com/demarlik01-ai/notion-cli-rs.git
 cd notion-cli-rs
 cargo install --path .
 ```
