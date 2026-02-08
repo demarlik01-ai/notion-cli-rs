@@ -30,7 +30,21 @@ $ notion-cli search "meeting notes"
 
 ## Installation
 
-### From crates.io (Recommended)
+### Pre-built binaries (Recommended)
+
+**Linux / macOS:**
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/demarlik01-ai/notion-cli-rs/releases/latest/download/notion-cli-tool-installer.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/demarlik01-ai/notion-cli-rs/releases/latest/download/notion-cli-tool-installer.ps1 | iex"
+```
+
+Or download binaries directly from [GitHub Releases](https://github.com/demarlik01-ai/notion-cli-rs/releases).
+
+### From crates.io
 
 ```bash
 cargo install notion-cli-tool
@@ -46,7 +60,6 @@ cargo install --path .
 
 ### Requirements
 
-- Rust 1.70+ (for building from source)
 - [Notion Integration Token](https://www.notion.so/my-integrations)
 
 ## Quick Start
